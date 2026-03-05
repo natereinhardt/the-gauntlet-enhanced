@@ -33,7 +33,9 @@ package nr.gauntlet;
 import nr.gauntlet.module.boss.BossModule;
 import nr.gauntlet.module.history.HistoryPanel;
 import nr.gauntlet.module.history.RunHistoryManager;
+import nr.gauntlet.module.map.MapModule;
 import nr.gauntlet.module.maze.MazeModule;
+import nr.gauntlet.module.overlay.PerformanceStatsOverlay;
 import com.google.inject.Provides;
 import java.awt.image.BufferedImage;
 import javax.inject.Inject;
@@ -49,13 +51,14 @@ import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.NavigationButton;
+import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.util.ImageUtil;
 
 @Slf4j
 @PluginDescriptor(
-	name = "The Gauntlet",
-	description = "All-in-one plugin for The Gauntlet.",
-	tags = {"the", "gauntlet"}
+	name = "The Gauntlet - Enhanced",
+	description = "The Original All-in-one plugin for The Gauntlet. BUT ENHANCED",
+	tags = {"the", "gauntlet", "enhanced"}
 )
 public final class TheGauntletPlugin extends Plugin
 {
@@ -86,11 +89,17 @@ public final class TheGauntletPlugin extends Plugin
 	@Inject
 	private BossModule bossModule;
 	@Inject
+	private MapModule mapModule;
+	@Inject
 	private RunHistoryManager historyManager;
 	@Inject
 	private ClientToolbar clientToolbar;
 	@Inject
 	private TheGauntletConfig config;
+	@Inject
+	private OverlayManager overlayManager;
+	@Inject
+	private PerformanceStatsOverlay performanceStatsOverlay;
 
 	private HistoryPanel historyPanel;
 	private NavigationButton navButton;
@@ -104,10 +113,19 @@ public final class TheGauntletPlugin extends Plugin
 	@Override
 	protected void startUp()
 	{
+		// Add performance overlay
+		overlayManager.add(performanceStatsOverlay);
+
 		// Initialize history panel
 		if (config.showHistoryPanel())
 		{
 			initializeHistoryPanel();
+		}
+
+		// Start map module if enabled
+		if (config.mapEnabled())
+		{
+			mapModule.start();
 		}
 
 		if (client.getGameState() != GameState.LOGGED_IN)
@@ -132,6 +150,13 @@ public final class TheGauntletPlugin extends Plugin
 	{
 		mazeModule.stop();
 		bossModule.stop();
+		
+		if (mapModule != null)
+		{
+			mapModule.stop();
+		}
+		
+		overlayManager.remove(performanceStatsOverlay);
 		removeHistoryPanel();
 	}
 
@@ -181,6 +206,17 @@ public final class TheGauntletPlugin extends Plugin
 			else
 			{
 				removeHistoryPanel();
+			}
+		}
+		else if (event.getKey().equals("mapEnabled"))
+		{
+			if (config.mapEnabled())
+			{
+				mapModule.start();
+			}
+			else
+			{
+				mapModule.stop();
 			}
 		}
 	}

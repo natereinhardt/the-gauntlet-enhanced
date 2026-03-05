@@ -78,9 +78,15 @@ public class RunHistoryManager
 		this.history = new ArrayList<>();
 
 		// Create history directory if it doesn't exist
+		log.info("History directory: {}", HISTORY_DIR.getAbsolutePath());
 		if (!HISTORY_DIR.exists())
 		{
-			HISTORY_DIR.mkdirs();
+			boolean created = HISTORY_DIR.mkdirs();
+			log.info("Created history directory: {} (success: {})", HISTORY_DIR.getAbsolutePath(), created);
+		}
+		else
+		{
+			log.info("History directory already exists: {}", HISTORY_DIR.getAbsolutePath());
 		}
 
 		loadHistory();
@@ -91,24 +97,38 @@ public class RunHistoryManager
 	 */
 	public void addRun(RunStats stats)
 	{
-		log.info("addRun called - stats: {}, trackingEnabled: {}", stats != null, config.trackRunHistory());
-		if (stats == null || !config.trackRunHistory())
+		log.info("=== addRun called ===");
+		log.info("Stats object: {}", stats);
+		log.info("Config trackRunHistory: {}", config.trackRunHistory());
+		
+		if (stats == null)
 		{
-			log.warn("Not saving run - stats null: {}, tracking disabled: {}", stats == null, !config.trackRunHistory());
+			log.error("CRITICAL: stats is null! Cannot save run.");
+			return;
+		}
+		
+		if (!config.trackRunHistory())
+		{
+			log.warn("Tracking disabled in config. Not saving run.");
 			return;
 		}
 
+		log.info("Adding run to history. Ticks: {}, Outcome: {}", stats.getTotalTicks(), stats.getOutcomeDisplay());
 		history.add(0, stats); // Add to front for most recent first
-		log.info("Added run to history. Total runs: {}. Outcome: {}, Ticks: {}", history.size(), stats.getOutcomeDisplay(), stats.getTotalTicks());
+		log.info("Added run to history. Total runs now: {}", history.size());
 
 		// Trim history if needed
 		if (history.size() > MAX_HISTORY_SIZE)
 		{
+			log.info("Trimming history from {} to {}", history.size(), MAX_HISTORY_SIZE);
 			history.subList(MAX_HISTORY_SIZE, history.size()).clear();
 		}
 
+		log.info("Calling saveHistory()...");
 		saveHistory();
+		log.info("Calling saveMasterFile()...");
 		saveMasterFile();
+		log.info("=== addRun complete ===");
 	}
 
 	/**
@@ -116,14 +136,21 @@ public class RunHistoryManager
 	 */
 	private void saveMasterFile()
 	{
+		log.info("Saving to master file: {}", MASTER_FILE.getAbsolutePath());
+		log.info("File exists before write: {}", MASTER_FILE.exists());
+		log.info("Parent directory exists: {}", MASTER_FILE.getParentFile().exists());
+		
 		try (FileWriter writer = new FileWriter(MASTER_FILE))
 		{
-			gson.toJson(history, writer);
-			log.debug("Saved {} runs to master file", history.size());
+			String json = gson.toJson(history);
+			writer.write(json);
+			writer.flush();
+			log.info("Successfully saved {} runs to master file: {}", history.size(), MASTER_FILE.getAbsolutePath());
+			log.info("File size after write: {} bytes", MASTER_FILE.length());
 		}
 		catch (IOException e)
 		{
-			log.error("Failed to save master file", e);
+			log.error("Failed to save master file: {}", MASTER_FILE.getAbsolutePath(), e);
 		}
 	}
 
@@ -199,7 +226,7 @@ public class RunHistoryManager
 		{
 			String json = gson.toJson(history);
 			configManager.setConfiguration(CONFIG_GROUP, HISTORY_KEY, json);
-			log.debug("Saved {} runs to config", history.size());
+			log.info("Saved {} runs to config (group: {}, key: {})", history.size(), CONFIG_GROUP, HISTORY_KEY);
 		}
 		catch (Exception e)
 		{
@@ -305,6 +332,7 @@ public class RunHistoryManager
 			writer.write("<!DOCTYPE html>\n<html>\n<head>\n");
 			writer.write("<meta charset=\"UTF-8\">\n");
 			writer.write("<title>Gauntlet Run History</title>\n");
+			writer.write("<script src=\"https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js\"></script>\n");
 			writer.write("<style>\n");
 			writer.write("body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }\n");
 			writer.write(".container { max-width: 1200px; margin: 0 auto; background: white; padding: 30px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }\n");
@@ -322,6 +350,10 @@ public class RunHistoryManager
 			writer.write(".failed { color: #f44336; font-weight: bold; }\n");
 			writer.write(".teleport { color: #FF9800; font-weight: bold; }\n");
 			writer.write(".corrupted { color: #9C27B0; }\n");
+			writer.write(".charts-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 30px; margin: 30px 0; }\n");
+			writer.write(".chart-container { background: #fff; padding: 20px; border: 1px solid #ddd; border-radius: 8px; }\n");
+			writer.write(".chart-container h3 { margin-top: 0; color: #555; font-size: 16px; }\n");
+			writer.write("canvas { max-height: 300px; }\n");
 			writer.write("@media print { body { background: white; } .container { box-shadow: none; } }\n");
 			writer.write("</style>\n</head>\n<body>\n");
 			writer.write("<div class=\"container\">\n");
@@ -341,6 +373,19 @@ public class RunHistoryManager
 			writer.write(String.format("<div class=\"stat-box\"><div class=\"stat-label\">Avg Ticks</div><div class=\"stat-value\">%.0f</div></div>\n", avgTicks));
 			writer.write(String.format("<div class=\"stat-box\"><div class=\"stat-label\">Avg Efficiency</div><div class=\"stat-value\">%.1f%%</div></div>\n", avgEfficiency));
 			writer.write(String.format("<div class=\"stat-box\"><div class=\"stat-label\">Avg DPS Given</div><div class=\"stat-value\">%.2f</div></div>\n", avgDpsGiven));
+			writer.write("</div>\n");
+
+			// Performance Charts
+			writer.write("<h2>Performance Trends</h2>\n");
+			writer.write("<div class=\"charts-grid\">\n");
+			writer.write("<div class=\"chart-container\"><h3>Tick Efficiency (%)</h3><canvas id=\"chartEfficiency\"></canvas></div>\n");
+			writer.write("<div class=\"chart-container\"><h3>Wrong Offensive Prayers</h3><canvas id=\"chartWrongOffPray\"></canvas></div>\n");
+			writer.write("<div class=\"chart-container\"><h3>Wrong Attack Styles</h3><canvas id=\"chartWrongAttStyle\"></canvas></div>\n");
+			writer.write("<div class=\"chart-container\"><h3>Wrong Defensive Prayers</h3><canvas id=\"chartWrongDefPray\"></canvas></div>\n");
+			writer.write("<div class=\"chart-container\"><h3>Tornado Hits</h3><canvas id=\"chartTornadoHits\"></canvas></div>\n");
+			writer.write("<div class=\"chart-container\"><h3>Floor Tile Hits</h3><canvas id=\"chartFloorHits\"></canvas></div>\n");
+			writer.write("<div class=\"chart-container\"><h3>DPS Given</h3><canvas id=\"chartDpsGiven\"></canvas></div>\n");
+			writer.write("<div class=\"chart-container\"><h3>DPS Taken</h3><canvas id=\"chartDpsTaken\"></canvas></div>\n");
 			writer.write("</div>\n");
 
 			// Detailed Table
@@ -384,6 +429,99 @@ public class RunHistoryManager
 			}
 
 			writer.write("</tbody>\n</table>\n");
+			
+			// Add JavaScript for charts
+			writer.write("<script>\n");
+			
+			// Prepare data (chronological order - oldest to newest)
+			List<RunStats> chronological = new ArrayList<>(history);
+			Collections.reverse(chronological);
+			
+			// Helper function for dynamic moving average
+			writer.write("function movingAverage(data, window) {\n");
+			writer.write("  const result = [];\n");
+			writer.write("  for (let i = 0; i < data.length; i++) {\n");
+			writer.write("    const start = Math.max(0, i - window + 1);\n");
+			writer.write("    const subset = data.slice(start, i + 1);\n");
+			writer.write("    const avg = subset.reduce((a, b) => a + b, 0) / subset.length;\n");
+			writer.write("    result.push(avg);\n");
+			writer.write("  }\n");
+			writer.write("  return result;\n");
+			writer.write("}\n\n");
+			
+			// Calculate dynamic window size (10% of total runs, min 5, max 20)
+			int maWindow = Math.max(5, Math.min(20, chronological.size() / 10));
+			writer.write(String.format("const maWindow = %d; // Dynamic: 10%% of %d runs\n", maWindow, chronological.size()));
+			
+			// Extract data arrays
+			writer.write("const labels = [");
+			for (int i = 0; i < chronological.size(); i++) {
+				writer.write(String.format("%d%s", i + 1, i < chronological.size() - 1 ? "," : ""));
+			}
+			writer.write("];\n");
+			
+			String[] metrics = {"efficiency", "wrongOffensivePrayer", "wrongAttackStyle", 
+				"wrongDefensivePrayer", "tornadoHits", "floorTileHits", "dpsGiven", "dpsTaken"};
+			String[] varNames = {"efficiency", "wrongOffPray", "wrongAttStyle", "wrongDefPray", 
+				"tornadoHits", "floorHits", "dpsGiven", "dpsTaken"};
+			
+			for (int m = 0; m < metrics.length; m++) {
+				writer.write(String.format("const %sData = [", varNames[m]));
+				for (int i = 0; i < chronological.size(); i++) {
+					RunStats run = chronological.get(i);
+					double value = getMetricValue(run, metrics[m]);
+					writer.write(String.format("%.2f%s", value, i < chronological.size() - 1 ? "," : ""));
+				}
+				writer.write("];\n");
+			}
+			
+			// Create charts
+			String[] chartIds = {"chartEfficiency", "chartWrongOffPray", "chartWrongAttStyle", 
+				"chartWrongDefPray", "chartTornadoHits", "chartFloorHits", "chartDpsGiven", "chartDpsTaken"};
+			String[] colors = {"75, 192, 192", "255, 99, 132", "255, 159, 64", "153, 102, 255", 
+				"255, 205, 86", "54, 162, 235", "76, 175, 80", "244, 67, 54"};
+			
+			for (int i = 0; i < chartIds.length; i++) {
+				writer.write(String.format("new Chart(document.getElementById('%s'), {\n", chartIds[i]));
+				writer.write("  type: 'line',\n");
+				writer.write("  data: {\n");
+				writer.write("    labels: labels,\n");
+				writer.write("    datasets: [{\n");
+				writer.write("      label: 'Actual',\n");
+				writer.write(String.format("      data: %sData,\n", varNames[i]));
+				writer.write(String.format("      borderColor: 'rgba(%s, 0.5)',\n", colors[i]));
+				writer.write(String.format("      backgroundColor: 'rgba(%s, 0.1)',\n", colors[i]));
+				writer.write("      borderWidth: 2,\n");
+				writer.write("      pointRadius: 3,\n");
+				writer.write("      fill: true\n");
+				writer.write("    }, {\n");
+				writer.write(String.format("      label: maWindow + '-Run MA',\n"));
+				writer.write(String.format("      data: movingAverage(%sData, maWindow),\n", varNames[i]));
+				writer.write(String.format("      borderColor: 'rgba(%s, 1)',\n", colors[i]));
+				writer.write("      borderWidth: 3,\n");
+				writer.write("      pointRadius: 0,\n");
+				writer.write("      fill: false\n");
+				writer.write("    }]\n");
+				writer.write("  },\n");
+				writer.write("  options: {\n");
+				writer.write("    responsive: true,\n");
+				writer.write("    maintainAspectRatio: true,\n");
+				writer.write("    interaction: { mode: 'index', intersect: false },\n");
+				writer.write("    plugins: {\n");
+				writer.write("      legend: { display: true, position: 'top' },\n");
+				writer.write("      tooltip: { enabled: true, mode: 'index', intersect: false },\n");
+				writer.write("      decimation: { enabled: labels.length > 100, algorithm: 'lttb', samples: 100 }\n");
+				writer.write("    },\n");
+				writer.write("    scales: {\n");
+				writer.write("      x: { display: true, title: { display: true, text: 'Run #' }, ticks: { maxTicksLimit: 10 } },\n");
+				writer.write("      y: { beginAtZero: true, ticks: { precision: 0 } }\n");
+				writer.write("    },\n");
+				writer.write("    elements: { point: { radius: labels.length > 50 ? 2 : 3 }, line: { tension: 0.1 } }\n");
+				writer.write("  }\n");
+				writer.write("});\n\n");
+			}
+			
+			writer.write("</script>\n");
 			writer.write("</div>\n</body>\n</html>");
 
 			log.info("Exported {} runs to HTML: {}", history.size(), HTML_FILE.getAbsolutePath());

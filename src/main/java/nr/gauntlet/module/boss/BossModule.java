@@ -44,14 +44,17 @@ import net.runelite.api.Client;
 import net.runelite.api.NPC;
 import net.runelite.api.NpcID;
 import net.runelite.api.NullNpcID;
+import net.runelite.api.Prayer;
+import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.ActorDeath;
+import net.runelite.api.events.AnimationChanged;
 import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.HitsplatApplied;
-import net.runelite.api.events.InteractingChanged;
 import net.runelite.api.events.NpcDespawned;
 import net.runelite.api.events.NpcSpawned;
+import java.util.Arrays;
 import net.runelite.client.eventbus.EventBus;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.ui.overlay.OverlayManager;
@@ -72,6 +75,36 @@ public final class BossModule implements Module
 	);
 
 	private static final List<Integer> TORNADO_IDS = List.of(NullNpcID.NULL_9025, NullNpcID.NULL_9039, 14142); // 14142 is echo tornado, remove after leagues
+
+	// Animation Ids for tracking
+	private static final int PLAYER_MAGE_ATTACK_ID = 1167;
+	private static final int PLAYER_RANGE_ATTACK_ID = 426;
+	private static final int PLAYER_MELEE_ATTACK_ID = 428;
+	private static final int PLAYER_MELEE_ALT_ATTACK_ID = 440;
+	private static final int PLAYER_SCEPTRE_ATTACK_ID = 401;
+	private static final int PLAYER_KICK_ATTACK_ID = 423;
+	private static final int PLAYER_PUNCH_ATTACK_ID = 422;
+	private static final int[] PLAYER_ATTACK_ANIMATION_IDS = {
+		PLAYER_MAGE_ATTACK_ID,
+		PLAYER_MELEE_ATTACK_ID,
+		PLAYER_RANGE_ATTACK_ID,
+		PLAYER_KICK_ATTACK_ID,
+		PLAYER_PUNCH_ATTACK_ID,
+		PLAYER_MELEE_ALT_ATTACK_ID,
+		PLAYER_SCEPTRE_ATTACK_ID
+	};
+
+	private static final int BOSS_ATTACK_ANIMATION_ID = 8419;
+	private static final int BOSS_STOMP_ANIMATION_ID = 8420;
+	private static final int BOSS_SWITCH_TO_MAGE_ANIMATION_ID = 8754;
+	private static final int BOSS_SWITCH_TO_RANGE_ANIMATION_ID = 8755;
+
+	// Ground object ids
+	private static final int DAMAGE_TILE_ID = 36048;
+
+	// Timings
+	private static final int WEAPON_ATTACK_SPEED = 4;
+	private static final int SCEPTRE_ATTACK_SPEED = 5;
 
 	@Getter(AccessLevel.PACKAGE)
 	private final List<NPC> tornadoes = new ArrayList<>();
@@ -99,6 +132,11 @@ public final class BossModule implements Module
 	private boolean inBossFight;
 	private static final int MIN_TICKS_FOR_VALID_RUN = 100; // Filter out immediate teleports
 
+	// Tracking state
+	private boolean isHunllefMaging = false;
+	private int previousAttackTick = 0;
+	private int currentWeaponAttackSpeed = WEAPON_ATTACK_SPEED;
+
 	@Override
 	public void start()
 	{
@@ -109,13 +147,26 @@ public final class BossModule implements Module
 			onNpcSpawned(new NpcSpawned(npc));
 		}
 
-		// Determine if corrupted based on region
-		int[] regions = client.getTopLevelWorldView().getMapRegions();
-		isCorrupted = regions != null && regions.length > 0 && regions[0] == 7512;
+		// Determine if corrupted based on Hunllef NPC ID (more reliable than region)
+		if (hunllef != null) {
+			isCorrupted = hunllef.getId() == NpcID.CORRUPTED_HUNLLEF ||
+				hunllef.getId() == NpcID.CORRUPTED_HUNLLEF_9036 ||
+				hunllef.getId() == NpcID.CORRUPTED_HUNLLEF_9037 ||
+				hunllef.getId() == NpcID.CORRUPTED_HUNLLEF_9038;
+		} else {
+			// Fallback to region check
+			int[] regions = client.getTopLevelWorldView().getMapRegions();
+			isCorrupted = regions != null && regions.length > 0 && regions[0] == 7512;
+		}
 
-		// Start stats tracking
+		// Reset previous run data and start new tracking
+		statsTracker.reset();
 		statsTracker.startTracking(isCorrupted);
 		inBossFight = true;
+		isHunllefMaging = false;
+		previousAttackTick = client.getTickCount(); // Give 4 ticks leeway at start
+		currentWeaponAttackSpeed = WEAPON_ATTACK_SPEED;
+		log.info("Started tracking new {} Gauntlet run", isCorrupted ? "Corrupted" : "Normal");
 
 		overlayManager.add(timerOverlay);
 		overlayManager.add(bossOverlay);
@@ -143,7 +194,11 @@ public final class BossModule implements Module
 		tornadoes.clear();
 		hunllef = null;
 		inBossFight = false;
-		statsTracker.reset();
+		isHunllefMaging = false;
+		previousAttackTick = 0;
+		currentWeaponAttackSpeed = WEAPON_ATTACK_SPEED;
+		// Don't reset stats immediately - let the overlay display them in the lobby
+		// Stats will be reset when starting a new fight
 	}
 
 	@Subscribe
@@ -178,18 +233,36 @@ public final class BossModule implements Module
 			// Boss died - finish run with success
 			log.info("Hunllef died! Finishing successful run.");
 			inBossFight = false;
+			
+			// Debug: Send chat message
+			if (statsTracker.getCurrentRun() != null)
+			{
+				client.addChatMessage(ChatMessageType.GAMEMESSAGE, "", 
+					"[Gauntlet] Run finished! Ticks: " + statsTracker.getCurrentRun().getTotalTicks() + 
+					" Min required: " + MIN_TICKS_FOR_VALID_RUN, null);
+			}
+			else
+			{
+				client.addChatMessage(ChatMessageType.GAMEMESSAGE, "", 
+					"[Gauntlet] ERROR: getCurrentRun() is null!", null);
+			}
+			
 			if (statsTracker.getCurrentRun() != null &&
 				statsTracker.getCurrentRun().getTotalTicks() >= MIN_TICKS_FOR_VALID_RUN)
 			{
 				statsTracker.finishRun(true, "SUCCESS");
 				log.info("Saving successful run with {} ticks", statsTracker.getCurrentRun().getTotalTicks());
 				historyManager.addRun(statsTracker.getCurrentRun());
+				client.addChatMessage(ChatMessageType.GAMEMESSAGE, "", 
+					"[Gauntlet] Run saved to history!", null);
 			}
 			else
 			{
 				log.warn("Run not saved - currentRun: {}, ticks: {}", 
 					statsTracker.getCurrentRun() != null, 
 					statsTracker.getCurrentRun() != null ? statsTracker.getCurrentRun().getTotalTicks() : 0);
+				client.addChatMessage(ChatMessageType.GAMEMESSAGE, "", 
+					"[Gauntlet] Run NOT saved - too short or null", null);
 			}
 		}
 	}
@@ -197,37 +270,117 @@ public final class BossModule implements Module
 	@Subscribe
 	public void onGameTick(final GameTick event)
 	{
+		if (!inBossFight)
+		{
+			return;
+		}
+
 		statsTracker.onTick();
+
+		// Check for tornado hits
+		WorldPoint playerLocation = client.getLocalPlayer().getWorldLocation();
+		for (NPC tornado : tornadoes)
+		{
+			if (playerLocation.equals(tornado.getWorldLocation()))
+			{
+				statsTracker.onTornadoHit();
+			}
+		}
+
+		// Check for floor tile damage
+		var scene = client.getWorldView(client.getLocalPlayer().getLocalLocation().getWorldView()).getScene();
+		var tiles = scene.getTiles();
+		int tileX = playerLocation.getX() - scene.getBaseX();
+		int tileY = playerLocation.getY() - scene.getBaseY();
+		var currentTile = tiles[playerLocation.getPlane()][tileX][tileY];
+		if (currentTile != null && currentTile.getGroundObject() != null && 
+			currentTile.getGroundObject().getId() == DAMAGE_TILE_ID)
+		{
+			statsTracker.onFloorTileHit();
+		}
 	}
 
 	@Subscribe
-	public void onInteractingChanged(final InteractingChanged event)
+	public void onAnimationChanged(final AnimationChanged event)
 	{
-		if (event.getSource() == client.getLocalPlayer() && event.getTarget() == hunllef)
+		if (!inBossFight)
 		{
-			statsTracker.onPlayerAttack();
+			return;
 		}
-		else if (event.getSource() == hunllef && event.getTarget() == client.getLocalPlayer())
+
+		final int animationId = event.getActor().getAnimation();
+		if (animationId < 0)
 		{
-			statsTracker.onHunllefAttack();
+			return;
+		}
+
+		// Player animation
+		if (event.getActor() == client.getLocalPlayer())
+		{
+			if (Arrays.stream(PLAYER_ATTACK_ANIMATION_IDS).anyMatch(value -> value == animationId))
+			{
+				// Player attack
+				statsTracker.onPlayerAttack();
+
+				// Check wrong attack style
+				if (!hasCorrectAttackStyle(animationId))
+				{
+					statsTracker.onWrongAttackStyle();
+				}
+
+				// Check wrong offensive prayer
+				if (!hasCorrectOffensivePrayer(animationId))
+				{
+					statsTracker.onWrongOffensivePrayer();
+				}
+
+				// Update weapon speed
+				currentWeaponAttackSpeed = animationId == PLAYER_SCEPTRE_ATTACK_ID ? 
+					SCEPTRE_ATTACK_SPEED : WEAPON_ATTACK_SPEED;
+				previousAttackTick = client.getTickCount();
+			}
+		}
+		// Hunllef animation
+		else if (event.getActor() == hunllef)
+		{
+			if (animationId == BOSS_ATTACK_ANIMATION_ID)
+			{
+				statsTracker.onHunllefAttack();
+
+				// Check wrong defensive prayer
+				if (!hasCorrectDefensivePrayer())
+				{
+					statsTracker.onWrongDefensivePrayer();
+				}
+			}
+			else if (animationId == BOSS_STOMP_ANIMATION_ID)
+			{
+				statsTracker.onHunllefStomp();
+			}
+			else if (animationId == BOSS_SWITCH_TO_MAGE_ANIMATION_ID)
+			{
+				isHunllefMaging = true;
+			}
+			else if (animationId == BOSS_SWITCH_TO_RANGE_ANIMATION_ID)
+			{
+				isHunllefMaging = false;
+			}
 		}
 	}
 
 	@Subscribe
 	public void onHitsplatApplied(final HitsplatApplied event)
 	{
+		if (!inBossFight)
+		{
+			return;
+		}
+
 		if (event.getActor() == client.getLocalPlayer())
 		{
 			// Player took damage
 			int damage = event.getHitsplat().getAmount();
 			statsTracker.onDamageTaken(damage);
-
-			// Check if damage from tornado
-			if (tornadoes.stream().anyMatch(t ->
-				t.getWorldLocation().distanceTo(client.getLocalPlayer().getWorldLocation()) <= 1))
-			{
-				statsTracker.onTornadoHit();
-			}
 		}
 		else if (event.getActor() == hunllef)
 		{
@@ -290,5 +443,78 @@ public final class BossModule implements Module
 		{
 			hunllef = null;
 		}
+	}
+
+	private boolean hasCorrectOffensivePrayer(int animationId)
+	{
+		boolean isNoWeaponAttack = animationId == PLAYER_KICK_ATTACK_ID ||
+			animationId == PLAYER_PUNCH_ATTACK_ID ||
+			animationId == PLAYER_SCEPTRE_ATTACK_ID;
+
+		// Melee attacks
+		if (animationId == PLAYER_MELEE_ATTACK_ID || animationId == PLAYER_MELEE_ALT_ATTACK_ID || isNoWeaponAttack)
+		{
+			return client.isPrayerActive(Prayer.PIETY) ||
+				client.isPrayerActive(Prayer.ULTIMATE_STRENGTH) ||
+				client.isPrayerActive(Prayer.SUPERHUMAN_STRENGTH) ||
+				client.isPrayerActive(Prayer.BURST_OF_STRENGTH);
+		}
+
+		// Mage attacks
+		if (animationId == PLAYER_MAGE_ATTACK_ID)
+		{
+			return client.isPrayerActive(Prayer.AUGURY) ||
+				client.isPrayerActive(Prayer.MYSTIC_MIGHT) ||
+				client.isPrayerActive(Prayer.MYSTIC_LORE) ||
+				client.isPrayerActive(Prayer.MYSTIC_WILL);
+		}
+
+		// Range attacks
+		if (animationId == PLAYER_RANGE_ATTACK_ID)
+		{
+			return client.isPrayerActive(Prayer.RIGOUR) ||
+				client.isPrayerActive(Prayer.EAGLE_EYE) ||
+				client.isPrayerActive(Prayer.HAWK_EYE) ||
+				client.isPrayerActive(Prayer.SHARP_EYE);
+		}
+
+		return false;
+	}
+
+	private boolean hasCorrectAttackStyle(int animationId)
+	{
+		if (hunllef == null)
+		{
+			return true;
+		}
+
+		switch (hunllef.getId())
+		{
+			// Protect from Melee - don't use melee
+			case NpcID.CORRUPTED_HUNLLEF:
+			case NpcID.CRYSTALLINE_HUNLLEF:
+				return animationId != PLAYER_MELEE_ATTACK_ID &&
+					animationId != PLAYER_KICK_ATTACK_ID &&
+					animationId != PLAYER_PUNCH_ATTACK_ID &&
+					animationId != PLAYER_MELEE_ALT_ATTACK_ID &&
+					animationId != PLAYER_SCEPTRE_ATTACK_ID;
+			// Protect from Missiles - don't use range
+			case NpcID.CRYSTALLINE_HUNLLEF_9022:
+			case NpcID.CORRUPTED_HUNLLEF_9036:
+				return animationId != PLAYER_RANGE_ATTACK_ID;
+			// Protect from Magic - don't use mage
+			case NpcID.CRYSTALLINE_HUNLLEF_9023:
+			case NpcID.CORRUPTED_HUNLLEF_9037:
+				return animationId != PLAYER_MAGE_ATTACK_ID;
+		}
+
+		return true;
+	}
+
+	private boolean hasCorrectDefensivePrayer()
+	{
+		return isHunllefMaging ? 
+			client.isPrayerActive(Prayer.PROTECT_FROM_MAGIC) : 
+			client.isPrayerActive(Prayer.PROTECT_FROM_MISSILES);
 	}
 }

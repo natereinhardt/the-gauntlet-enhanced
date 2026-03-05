@@ -104,6 +104,14 @@ public interface TheGauntletConfig extends Config
 	)
 	String historySection = "history";
 
+	@ConfigSection(
+		name = "Gauntlet Map",
+		description = "Live maze map with resource and demi-boss tracking.",
+		position = 7,
+		closedByDefault = true
+	)
+	String mapSection = "mapSection";
+
 	// Resource Tracking
 
 	@ConfigItem(
@@ -939,6 +947,134 @@ public interface TheGauntletConfig extends Config
 		return false;
 	}
 
+	// Gauntlet Map
+
+	@ConfigItem(
+		name = "Enable map",
+		description = "Enable the Gauntlet maze map feature.",
+		position = 0,
+		keyName = "mapEnabled",
+		section = mapSection
+	)
+	default boolean mapEnabled()
+	{
+		return false;
+	}
+
+	@ConfigItem(
+		name = "Show sidebar panel",
+		description = "When to show the map panel in the sidebar.",
+		position = 1,
+		keyName = "mapPanelVisibility",
+		section = mapSection
+	)
+	default MapPanelVisibility mapPanelVisibility()
+	{
+		return MapPanelVisibility.IN_GAUNTLET;
+	}
+
+	@ConfigItem(
+		name = "Show overlay",
+		description = "Display map as an on-screen overlay.",
+		position = 2,
+		keyName = "mapShowOverlay",
+		section = mapSection
+	)
+	default boolean mapShowOverlay()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+		name = "Overlay tile size",
+		description = "Size of each map tile in the overlay (pixels).",
+		position = 3,
+		keyName = "mapOverlayTileSize",
+		section = mapSection
+	)
+	@Range(min = 1, max = 34)
+	@Units(Units.PIXELS)
+	default int mapOverlayTileSize()
+	{
+		return 26;
+	}
+
+	@ConfigItem(
+		name = "Overlay opacity",
+		description = "Transparency of the map overlay.",
+		position = 4,
+		keyName = "mapOverlayOpacity",
+		section = mapSection
+	)
+	@Range(min = 1, max = 100)
+	@Units(Units.PERCENT)
+	default int mapOverlayOpacity()
+	{
+		return 100;
+	}
+
+	@ConfigItem(
+		name = "Show demi-bosses",
+		description = "Show demi-boss locations on the map.",
+		position = 5,
+		keyName = "mapShowDemiBosses",
+		section = mapSection
+	)
+	default boolean mapShowDemiBosses()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+		name = "Show fishing spots",
+		description = "Show fishing spot markers on the map.",
+		position = 6,
+		keyName = "mapShowFishingSpots",
+		section = mapSection
+	)
+	default boolean mapShowFishingSpots()
+	{
+		return true;
+	}
+
+	@ConfigItem(
+		name = "Show grym leaves",
+		description = "Show grym leaf markers on the map.",
+		position = 7,
+		keyName = "mapShowGrymLeaves",
+		section = mapSection
+	)
+	default boolean mapShowGrymLeaves()
+	{
+		return true;
+	}
+
+	@Alpha
+	@ConfigItem(
+		name = "Demi-boss outline color",
+		description = "Color for outlining demi-boss node objects.",
+		position = 8,
+		keyName = "mapDemiBossOutlineColor",
+		section = mapSection
+	)
+	default Color mapDemiBossOutlineColor()
+	{
+		return Color.YELLOW;
+	}
+
+	@ConfigItem(
+		name = "Demi-boss outline size",
+		description = "Width of the demi-boss node outline.",
+		position = 9,
+		keyName = "mapDemiBossOutlineSize",
+		section = mapSection
+	)
+	@Range(min = 1, max = 4)
+	default int mapDemiBossOutlineSize()
+	{
+		return 1;
+	}
+
 	// Constants
 
 	@Getter
@@ -981,6 +1117,23 @@ public interface TheGauntletConfig extends Config
 	{
 		DECREMENT("Decrement"),
 		INCREMENT("Increment");
+
+		private final String name;
+
+		@Override
+		public String toString()
+		{
+			return name;
+		}
+	}
+
+	@Getter
+	@AllArgsConstructor
+	enum MapPanelVisibility
+	{
+		ALWAYS("Always"),
+		IN_GAUNTLET("In Gauntlet"),
+		NEVER("Never");
 
 		private final String name;
 

@@ -78,15 +78,15 @@ public class RunHistoryManager
 		this.history = new ArrayList<>();
 
 		// Create history directory if it doesn't exist
-		log.info("History directory: {}", HISTORY_DIR.getAbsolutePath());
+		log.debug("History directory: {}", HISTORY_DIR.getAbsolutePath());
 		if (!HISTORY_DIR.exists())
 		{
 			boolean created = HISTORY_DIR.mkdirs();
-			log.info("Created history directory: {} (success: {})", HISTORY_DIR.getAbsolutePath(), created);
+			log.debug("Created history directory: {} (success: {})", HISTORY_DIR.getAbsolutePath(), created);
 		}
 		else
 		{
-			log.info("History directory already exists: {}", HISTORY_DIR.getAbsolutePath());
+			log.debug("History directory already exists: {}", HISTORY_DIR.getAbsolutePath());
 		}
 
 		loadHistory();
@@ -97,9 +97,9 @@ public class RunHistoryManager
 	 */
 	public void addRun(RunStats stats)
 	{
-		log.info("=== addRun called ===");
-		log.info("Stats object: {}", stats);
-		log.info("Config trackRunHistory: {}", config.trackRunHistory());
+		log.debug("=== addRun called ===");
+		log.debug("Stats object: {}", stats);
+		log.debug("Config trackRunHistory: {}", config.trackRunHistory());
 		
 		if (stats == null)
 		{
@@ -113,22 +113,22 @@ public class RunHistoryManager
 			return;
 		}
 
-		log.info("Adding run to history. Ticks: {}, Outcome: {}", stats.getTotalTicks(), stats.getOutcomeDisplay());
+		log.debug("Adding run to history. Ticks: {}, Outcome: {}", stats.getTotalTicks(), stats.getOutcomeDisplay());
 		history.add(0, stats); // Add to front for most recent first
-		log.info("Added run to history. Total runs now: {}", history.size());
+		log.debug("Added run to history. Total runs now: {}", history.size());
 
 		// Trim history if needed
 		if (history.size() > MAX_HISTORY_SIZE)
 		{
-			log.info("Trimming history from {} to {}", history.size(), MAX_HISTORY_SIZE);
+			log.debug("Trimming history from {} to {}", history.size(), MAX_HISTORY_SIZE);
 			history.subList(MAX_HISTORY_SIZE, history.size()).clear();
 		}
 
-		log.info("Calling saveHistory()...");
+		log.debug("Calling saveHistory()...");
 		saveHistory();
-		log.info("Calling saveMasterFile()...");
+		log.debug("Calling saveMasterFile()...");
 		saveMasterFile();
-		log.info("=== addRun complete ===");
+		log.debug("=== addRun complete ===");
 	}
 
 	/**
@@ -136,17 +136,17 @@ public class RunHistoryManager
 	 */
 	private void saveMasterFile()
 	{
-		log.info("Saving to master file: {}", MASTER_FILE.getAbsolutePath());
-		log.info("File exists before write: {}", MASTER_FILE.exists());
-		log.info("Parent directory exists: {}", MASTER_FILE.getParentFile().exists());
+		log.debug("Saving to master file: {}", MASTER_FILE.getAbsolutePath());
+		log.debug("File exists before write: {}", MASTER_FILE.exists());
+		log.debug("Parent directory exists: {}", MASTER_FILE.getParentFile().exists());
 		
 		try (FileWriter writer = new FileWriter(MASTER_FILE))
 		{
 			String json = gson.toJson(history);
 			writer.write(json);
 			writer.flush();
-			log.info("Successfully saved {} runs to master file: {}", history.size(), MASTER_FILE.getAbsolutePath());
-			log.info("File size after write: {} bytes", MASTER_FILE.length());
+			log.debug("Successfully saved {} runs to master file: {}", history.size(), MASTER_FILE.getAbsolutePath());
+			log.debug("File size after write: {} bytes", MASTER_FILE.length());
 		}
 		catch (IOException e)
 		{
@@ -226,7 +226,7 @@ public class RunHistoryManager
 		{
 			String json = gson.toJson(history);
 			configManager.setConfiguration(CONFIG_GROUP, HISTORY_KEY, json);
-			log.info("Saved {} runs to config (group: {}, key: {})", history.size(), CONFIG_GROUP, HISTORY_KEY);
+			log.debug("Saved {} runs to config (group: {}, key: {})", history.size(), CONFIG_GROUP, HISTORY_KEY);
 		}
 		catch (Exception e)
 		{
@@ -298,7 +298,7 @@ public class RunHistoryManager
 				));
 			}
 
-			log.info("Exported {} runs to CSV: {}", history.size(), CSV_FILE.getAbsolutePath());
+			log.debug("Exported {} runs to CSV: {}", history.size(), CSV_FILE.getAbsolutePath());
 			return CSV_FILE;
 		}
 		catch (IOException e)
@@ -525,7 +525,7 @@ public class RunHistoryManager
 			writer.write("</script>\n");
 			writer.write("</div>\n</body>\n</html>");
 
-			log.info("Exported {} runs to HTML: {}", history.size(), HTML_FILE.getAbsolutePath());
+			log.debug("Exported {} runs to HTML: {}", history.size(), HTML_FILE.getAbsolutePath());
 			return HTML_FILE;
 		}
 		catch (IOException e)

@@ -113,7 +113,7 @@ public class MapModule implements Module
 		overlayManager.add(mapOverlay);
 		overlayManager.add(demiBossOverlay);
 		
-		log.info("Gauntlet Map module started");
+		log.debug("Gauntlet Map module started");
 	}
 
 	@Override
@@ -123,7 +123,7 @@ public class MapModule implements Module
 		clientToolbar.removeNavigation(navButton);
 		overlayManager.remove(demiBossOverlay);
 		overlayManager.remove(mapOverlay);
-		log.info("Gauntlet Map module stopped");
+		log.debug("Gauntlet Map module stopped");
 	}
 
 	@Subscribe

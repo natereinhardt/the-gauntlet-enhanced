@@ -29,7 +29,6 @@ package nr.gauntlet.module.history;
 
 import java.awt.BorderLayout;
 import java.awt.Color;
-import java.awt.Desktop;
 import java.awt.Dimension;
 import java.awt.GridLayout;
 import java.io.File;
@@ -48,6 +47,7 @@ import javax.swing.border.EmptyBorder;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.ui.PluginPanel;
+import net.runelite.client.util.LinkBrowser;
 
 /**
  * Plugin panel to display Gauntlet run history with charts and statistics
@@ -205,7 +205,7 @@ public class HistoryPanel extends PluginPanel
 		{
 			try
 			{
-				Desktop.getDesktop().browse(file.toURI());
+				LinkBrowser.browse(file.toURI().toString());
 				JOptionPane.showMessageDialog(this,
 					"Exported to: " + file.getAbsolutePath() + "\n\nOpening in browser...",
 					"Export Successful",
@@ -236,7 +236,7 @@ public class HistoryPanel extends PluginPanel
 		{
 			try
 			{
-				Desktop.getDesktop().open(file.getParentFile());
+				LinkBrowser.browse(file.getParentFile().toURI().toString());
 				JOptionPane.showMessageDialog(this,
 					"Exported to: " + file.getAbsolutePath(),
 					"Export Successful",

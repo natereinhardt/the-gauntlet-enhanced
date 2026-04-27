@@ -161,7 +161,7 @@ public final class BossModule implements Module
 		statsTracker.startTracking(isCorrupted, client.getTickCount());
 		inBossFight = true;
 		isHunllefMaging = false;
-		log.info("Started tracking new {} Gauntlet run", isCorrupted ? "Corrupted" : "Normal");
+		log.debug("Started tracking new {} Gauntlet run", isCorrupted ? "Corrupted" : "Normal");
 
 		overlayManager.add(timerOverlay);
 		overlayManager.add(bossOverlay);
@@ -219,13 +219,13 @@ public final class BossModule implements Module
 		else if (event.getActor() == hunllef)
 		{
 			// Boss died - finish run with success
-			log.info("Hunllef died! Finishing successful run.");
+			log.debug("Hunllef died! Finishing successful run.");
 			inBossFight = false;
 			
 			if (statsTracker.getCurrentRun() != null)
 			{
 				statsTracker.finishRun(true, "SUCCESS");
-				log.info("Saving successful run with {} ticks", statsTracker.getCurrentRun().getTotalTicks());
+				log.debug("Saving successful run with {} ticks", statsTracker.getCurrentRun().getTotalTicks());
 				historyManager.addRun(statsTracker.getCurrentRun());
 			}
 		}

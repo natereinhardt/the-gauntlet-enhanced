@@ -68,7 +68,11 @@ public class PerformanceStatsOverlay extends OverlayPanel
 		RunStats stats = statsTracker.getCurrentRun();
 
 		// Only show in lobby after a run that was properly finished
-		if (!isInGauntletLobby() || stats == null || stats.getTotalTicks() <= 0 || stats.getOutcome() == null)
+		if (!config.lobbyOverlayEnabled()
+			|| !isInGauntletLobby()
+			|| stats == null
+			|| stats.getTotalTicks() <= 0
+			|| stats.getOutcome() == null)
 		{
 			return null;
 		}

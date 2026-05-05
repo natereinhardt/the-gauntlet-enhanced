@@ -947,6 +947,18 @@ public interface GauntletToolkitConfig extends Config
 		return false;
 	}
 
+	@ConfigItem(
+		position = 2,
+		keyName = "lobbyOverlayEnabled",
+		name = "Show lobby overlay",
+		description = "Show performance statistics in the Gauntlet lobby after a run.",
+		section = historySection
+	)
+	default boolean lobbyOverlayEnabled()
+	{
+		return true;
+	}
+
 	// Gauntlet Map
 
 	@ConfigItem(
